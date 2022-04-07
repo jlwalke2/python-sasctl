@@ -24,6 +24,16 @@ jobs:
         with:
           options: "--verbose"
           src: "./src"
+      - name: Commit changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -a -m "reformatted with Black"
+      - name: Push changes to repo
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          force: true        
 
   test:
     name: "Test"

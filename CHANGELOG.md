@@ -1,10 +1,35 @@
 Unreleased
 ----------
- - 
+ -
+
+v1.6.4 (2022-04-07)
+-------------------
+**Bugfixes**
+ - Fixed an issue where `folders.create_folder()` would attempt to use root folder as parent if desired parent
+   folder wasn't found.  Now correctly handles parent folders and raises an error if folder not found.
+
+v1.6.3 (2021-09-23)
+-------------------
+**Bugfixes**
+ - Fix an issue where `pzmm.ZipModel.zipFiles()` threw an error on Python 3.6.1 and earlier.
+ 
+v1.6.2 (2021-09-09)
+-------------------
+**Bugfixes**
+ - Fixed an issue with `register_model()` where random forest, gradient boosting, and SVM regression models with 
+ nominal inputs where incorrectly treated as classification models. 
+ 
+v1.6.1 (2021-09-01)
+-------------------
+**Improvements**
+ - `model_repository.add_model_content()` will now overwrite existing files instead of failing.
+ 
+**Bugfixes**
+ - `PagedList.__repr__()` no longer appears to be an empty list. 
 
 v1.6.0 (2021-06-29)
 -------------------
- **Improvements**
+**Improvements**
  - `Session` now supports authorization using OAuth2 tokens.  Use the `token=` parameter in the constructor when 
  an existing access token token is known.  Alternatively, omitting the `username=` and `password=` parameters
  will now prompt the user for an auth code.
@@ -14,7 +39,6 @@ v1.6.0 (2021-06-29)
  was done to alleviate quirks where an old, expired session is implicitly used instead of a newly-created session.
  - Removed deprecated `raw=` parameter from `sasctl.core.request()`.
  - Dropped support for Python 2.
- 
  
 v1.5.9 (2021-06-09)
 -------------------

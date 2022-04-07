@@ -13,9 +13,17 @@
     <img src="https://img.shields.io/badge/Python-3.5%2B-blue.svg" alt="Python Version">
   </a>
 
-   <img src="https://travis-ci.com/sassoftware/python-sasctl.svg?branch=master">
-  
+  <a href="https://github.com/sassoftware/python-sasctl/actions/workflows/build-test-deploy.yml">
+    <img src="https://github.com/sassoftware/python-sasctl/actions/workflows/build-test-deploy.yml/badge.svg" />
+  </a>
+    
+  <a href="https://codecov.io/gh/sassoftware/python-sasctl">
+    <img src="https://codecov.io/gh/sassoftware/python-sasctl/branch/master/graph/badge.svg?token=mDcvtz2Als"/>
+  </a>
+
+    
 </div>
+
 
 
 ###### Full documentation:  https://sassoftware.github.io/python-sasctl
@@ -49,8 +57,7 @@ sasctl folders list
 sasctl requires the following Python packages be installed.
 If not already present, these packages will be downloaded and installed automatically.  
 - requests
-- six
-- futures (Python 2.7 only)
+- pyyaml
 
 The following additional packages are recommended for full functionality:
 - swat

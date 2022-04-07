@@ -15,36 +15,53 @@ class Folders(Service):
     use a URI to point back to those resources.
 
     """
+
     _SERVICE_ROOT = '/folders'
 
-    list_folders, get_folder, update_folder, \
-    delete_folder = Service._crud_funcs('/folders', 'folder')
+    list_folders, get_folder, update_folder, delete_folder = Service._crud_funcs(
+        '/folders', 'folder'
+    )
 
+    @classmethod
     @sasctl_command('folders', 'create')
-    def create_folder(self, name, parent=None, description=None):
-        """
+    def create_folder(cls, name, parent=None, description=None):
+        """Create a new folder.
 
         Parameters
         ----------
         name : str
             The name of the new folder
         parent : str or dict, optional
-            The parent folder for this folder, if any.  Can be a folder name,
-            id, or dict response from `get_folder`
+            The parent folder for this folder, if any.  Can be a folder name, id, or dict response from `get_folder`.
+            If not specified, new folder will be created under root folder.
         description : str, optional
             A description of the folder
 
         Returns
         -------
+        RestObj
+            Details of newly-created folder
 
         """
-        parent = self.get_folder(parent)
+        if parent is not None:
+            parent_obj = cls.get_folder(parent)
 
-        body = {'name': name,
-                'description': description,
-                'folderType': 'folder',
-                'parentFolderUri': parent.id if parent else None }
+            parent_uri = cls.get_link(parent_obj, 'self')
+            if parent_uri is None:
+                raise ValueError("`parent` folder '%s' does not exist." % parent)
+            parent_uri = parent_uri['uri']
+        else:
+            parent_uri = None
 
-        return self.post('/folders',
-                         json=body,
-                         headers={'Content-Type': 'application/vnd.sas.content.folder+json'})
+        body = {
+            'name': name,
+            'description': description,
+            'folderType': 'folder'
+        }
+
+        return cls.post(
+            '/folders',
+            json=body,
+            params={'parentFolderUri': parent_uri},
+            headers={'Content-Type': 'application/vnd.sas.content.folder+json'},
+        )

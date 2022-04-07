@@ -19,12 +19,11 @@ from uuid import UUID, uuid4
 
 import requests
 import requests.exceptions
-import six
 import yaml
 from packaging import version
 from requests.adapters import HTTPAdapter
-from six.moves.urllib.parse import urlsplit, urlunsplit
-from six.moves.urllib.error import HTTPError
+from urllib.parse import urlsplit, urlunsplit
+from urllib.error import HTTPError
 
 try:
     import swat
@@ -159,7 +158,14 @@ def current_session(*args, **kwargs):
 
 
 class OAuth2Token(requests.auth.AuthBase):
-    def __init__(self, access_token, refresh_token=None, expiration=None, expires_in=None, **kwargs):
+    def __init__(
+        self,
+        access_token,
+        refresh_token=None,
+        expiration=None,
+        expires_in=None,
+        **kwargs
+    ):
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.expiration = expiration
@@ -278,7 +284,7 @@ class Session(requests.Session):
         protocol=None,
         port=None,
         verify_ssl=None,
-        token=None
+        token=None,
     ):
         super(Session, self).__init__()
 
@@ -320,6 +326,7 @@ class Session(requests.Session):
         # every request.  Insert a warning filter so these warnings only appear on the first request.
         if not verify_ssl:
             from urllib3.exceptions import InsecureRequestWarning
+
             warnings.simplefilter('default', InsecureRequestWarning)
 
         self.filters = DEFAULT_FILTERS
@@ -397,7 +404,9 @@ class Session(requests.Session):
         self.verify = verify_ssl
 
         # Find a suitable authentication mechanism and build an auth header
-        self.auth = self.get_auth(self._settings['username'], self._settings['password'], token)
+        self.auth = self.get_auth(
+            self._settings['username'], self._settings['password'], token
+        )
 
         # Used for context manager
         self._old_session = current_session()
@@ -613,7 +622,7 @@ class Session(requests.Session):
                 stream,
                 verify,
                 cert,
-                json
+                json,
             )
 
             if r.status_code == 401:
@@ -622,7 +631,9 @@ class Session(requests.Session):
                 # Access token expired, need to refresh it (if we can)
                 if 'access token expired' in auth_header:
                     try:
-                        self.auth = self.get_oauth_token(refresh_token=self.auth.refresh_token)
+                        self.auth = self.get_oauth_token(
+                            refresh_token=self.auth.refresh_token
+                        )
 
                         # Repeat the request
                         r = super(Session, self).request(
@@ -641,7 +652,7 @@ class Session(requests.Session):
                             stream,
                             verify,
                             cert,
-                            json
+                            json,
                         )
                     except exceptions.AuthorizationError:
                         pass
@@ -722,7 +733,15 @@ class Session(requests.Session):
         auth_code = self.prompt_for_auth_code()
         return self.get_oauth_token(auth_code=auth_code)
 
-    def get_oauth_token(self, username=None, password=None, auth_code=None, refresh_token=None, client_id=None, client_secret=None):
+    def get_oauth_token(
+        self,
+        username=None,
+        password=None,
+        auth_code=None,
+        refresh_token=None,
+        client_id=None,
+        client_secret=None,
+    ):
         """Request an OAuth2 access token using either a username & password or an auth token.
 
         Parameters
@@ -751,13 +770,19 @@ class Session(requests.Session):
         """
 
         if username is not None:
-            data = {'grant_type': 'password', 'username': username, 'password': password}
+            data = {
+                'grant_type': 'password',
+                'username': username,
+                'password': password,
+            }
         elif auth_code is not None:
             data = {'grant_type': 'authorization_code', 'code': auth_code}
         elif refresh_token is not None:
             data = {'grant_type': 'refresh_token', 'refresh_token': refresh_token}
         else:
-            raise ValueError('Either username and password or auth_code parameters must be specified.')
+            raise ValueError(
+                'Either username and password or auth_code parameters must be specified.'
+            )
 
         client_id = client_id or os.environ.get('SASCTL_CLIENT_ID', 'sas.ec')
         client_secret = client_secret or os.environ.get('SASCTL_CLIENT_SECRET', '')
@@ -768,18 +793,31 @@ class Session(requests.Session):
         }
 
         url = self._build_url('/SASLogon/oauth/token')
-        r = super(Session, self).post(url, headers=headers, data=data, auth=(client_id, client_secret), verify=self.verify)
+        r = super(Session, self).post(
+            url,
+            headers=headers,
+            data=data,
+            auth=(client_id, client_secret),
+            verify=self.verify,
+        )
 
         # Raise user-friendly error messages if issue is known
         if r.status_code == 400 and auth_code is not None:
             j = r.json()
             if "Invalid authorization code" in j.get('error_description', ''):
-                raise exceptions.AuthorizationError("Invalid authorization code: '%s'" % auth_code)
+                raise exceptions.AuthorizationError(
+                    "Invalid authorization code: '%s'" % auth_code
+                )
         if r.status_code == 401:
-            if r.json().get('error_description', '').lower() == 'bad credentials' and username is None:
+            if (
+                r.json().get('error_description', '').lower() == 'bad credentials'
+                and username is None
+            ):
                 raise exceptions.AuthenticationError(msg='Invalid client id or secret.')
             if r.json().get('error', '') == 'invalid_token':
-                raise exceptions.AuthorizationError('Refresh token is incorrect, expired, or revoked.')
+                raise exceptions.AuthorizationError(
+                    'Refresh token is incorrect, expired, or revoked.'
+                )
             if username is not None:
                 raise exceptions.AuthenticationError(username)
 
@@ -816,8 +854,15 @@ class Session(requests.Session):
         client_id = client_id or os.environ.get('SASCTL_CLIENT_ID', 'sas.ec')
 
         # User must open this URL in a browser and then enter the auth code that's generated.
-        url = self._build_url('/SASLogon/oauth/authorize') + '?response_type=code&client_id=' + client_id
-        message = 'Please use a web browser to login at the following URL to get your authorization code:\n' + url
+        url = (
+            self._build_url('/SASLogon/oauth/authorize')
+            + '?response_type=code&client_id='
+            + client_id
+        )
+        message = (
+            'Please use a web browser to login at the following URL to get your authorization code:\n'
+            + url
+        )
         print(message)
         auth_code = input('Authorization Code:')
 
@@ -850,21 +895,23 @@ class Session(requests.Session):
             'accesstoken': token.access_token,
             'refreshtoken': token.refresh_token,
             'tokentype': 'bearer',
-            'expiry': token.expiration
+            'expiry': token.expiration,
         }
 
         # See if there's an existing profile to update
-        matches = [(i, p) for i, p in enumerate(profiles['profiles']) if p['baseurl'] == base_url]
+        matches = [
+            (i, p)
+            for i, p in enumerate(profiles['profiles'])
+            if p['baseurl'] == base_url
+        ]
         if matches:
             idx, match = matches[0]
             match['oauthtoken'] = token
             profiles['profiles'][idx] = match
         else:
-            profiles['profiles'].append({
-                'baseurl': base_url,
-                'name': None,
-                'oauthtoken': token
-            })
+            profiles['profiles'].append(
+                {'baseurl': base_url, 'name': None, 'oauthtoken': token}
+            )
 
         Session._write_token_cache(profiles, path)
 
@@ -885,7 +932,7 @@ class Session(requests.Session):
         field_mappings = {
             'accesstoken': 'access_token',
             'refreshtoken': 'refresh_token',
-            'expiry': 'expiration'
+            'expiry': 'expiration',
         }
 
         profiles = Session._read_token_cache(path)
@@ -902,14 +949,19 @@ class Session(requests.Session):
             # Return the cached token
             if baseurl == url.lower():
                 data = profile.get('oauthtoken', {})
-                token = {field_mappings[k]: v for k, v in six.iteritems(data) if k in field_mappings}
+                token = {
+                    field_mappings[k]: v for k, v in data.items() if k in field_mappings
+                }
                 token = OAuth2Token(**token)
 
                 # Attempt to refresh if cached token has expired
                 if token.is_expired:
                     try:
                         token = self.get_oauth_token(refresh_token=token.refresh_token)
-                    except (exceptions.AuthorizationError, requests.exceptions.HTTPError):
+                    except (
+                        exceptions.AuthorizationError,
+                        requests.exceptions.HTTPError,
+                    ):
                         return
 
                 # If refresh fails, dont return token, allow user to be prompted for login
@@ -929,7 +981,7 @@ class Session(requests.Session):
         flags = kerberos.GSS_C_MUTUAL_FLAG | kerberos.GSS_C_SEQUENCE_FLAG
         service = 'HTTP@%s' % self._settings['domain']
 
-        logger.info('Attempting Kerberos authentication to %s as %s', service, user)
+        logger.info('Attempting Kerberos authentication to %s', service)
 
         url = self._build_url(
             '/SASLogon/oauth/authorize?client_id=%s&response_type=token' % client_id
@@ -969,7 +1021,6 @@ class Session(requests.Session):
 
         # Get the user that was used for authentication
         username = kerberos.authGSSClientUserName(context)
-        logger.info('Authenticated as %s', username)
 
         # Drop @REALM from username and store
         if username is not None:
@@ -1046,9 +1097,12 @@ class Session(requests.Session):
             flags = oct(mode)[-3:]
 
             if flags != '600':
-                raise RuntimeError('Unable to read profile cache.  '
-                                   'The file permissions for %s must be configured so that only the file owner has '
-                                   'read/write permissions (equivalent to 600 on Linux systems).' % yaml_file)
+                raise RuntimeError(
+                    'Unable to read profile cache.  '
+                    'The file permissions for %s must be configured so that only the file owner has '
+                    'read/write permissions (equivalent to 600 on Linux systems).'
+                    % yaml_file
+                )
 
             with open(yaml_file) as f:
                 return yaml.load(f, Loader=yaml.FullLoader)
@@ -1214,8 +1268,6 @@ class PageIterator:
         # All Iterators are also Iterables
         return self
 
-    next = __next__  # Python 2 compatible
-
     def _request_async(self, start):
         """Used by worker threads to retrieve next batch of items."""
 
@@ -1284,25 +1336,15 @@ class PagedItemIterator:
         if not self._cache:
             self._cache = next(self._pager)
 
-            if len(self._cache) < self._pager._limit:
-                # number of items returned in page was less than expected
-                # might be last page, or items might have been filtered out by server.
-                pass
-
         # Return the next item
         if self._cache:
             self._count -= 1
             return self._cache.pop(0)
 
         raise StopIteration()
-        # Out of items and out of pages
-        # self._count = 0
-        # raise StopIteration
 
     def __iter__(self):
         return self
-
-    next = __next__  # Python 2 compatible
 
 
 class PagedListIterator:
@@ -1334,8 +1376,6 @@ class PagedListIterator:
     def __iter__(self):
         return self
 
-    next = __next__  # Python 2 compatibility
-
 
 class PagedList(list):
     """List that dynamically loads items from the server.
@@ -1364,11 +1404,12 @@ class PagedList(list):
 
     def __init__(self, obj, session=None, threads=4):
         super(PagedList, self).__init__()
-        self._pager = PagedItemIterator(obj, session=session, threads=threads)
+        self._paged_items = PagedItemIterator(obj, session=session, threads=threads)
 
-        # Add the first page of items to the list
-        for _ in range(len(self._pager._cache)):
-            self.append(next(self._pager))
+        # Go ahead and add the items that were initially returned.
+        # Do this by "paging" so iterator remains at the correct spot.
+        for _ in range(len(obj['items'])):
+            self.append(next(self._paged_items))
 
         # Assume that server has more items available
         self._has_more = True
@@ -1376,7 +1417,7 @@ class PagedList(list):
     def __len__(self):
         if self._has_more:
             # Estimate the total length as items downloaded + items still on server
-            return super(PagedList, self).__len__() + len(self._pager)
+            return super(PagedList, self).__len__() + len(self._paged_items)
         else:
             # We've pulled everything from the server, so we have an exact length now.
             return super(PagedList, self).__len__()
@@ -1405,7 +1446,7 @@ class PagedList(list):
             # Iterate through server-side pages until we've loaded
             # the item at the requested index.
             while super(PagedList, self).__len__() <= idx:
-                n = next(self._pager)
+                n = next(self._paged_items)
                 self.append(n)
 
         except StopIteration:
@@ -1415,13 +1456,13 @@ class PagedList(list):
         # Get the item from the list
         return super(PagedList, self).__getitem__(item)
 
-    def __str__(self):
-        string = super(PagedList, self).__str__()
+    def __repr__(self):
+        string = super(PagedList, self).__repr__()
 
         # If the list has more "items" than are stored in the underlying list
         # then there are more downloads to make.
         if len(self) - super(PagedList, self).__len__() > 0:
-            string = string.rstrip(']') + ', ... ]'
+            string = string.rstrip(']') + ', ...]'
 
         return string
 

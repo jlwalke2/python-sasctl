@@ -115,7 +115,7 @@ def current_session(*args, **kwargs):
     None if no session has been created yet.  If called with an existing session
     instance, that session will be set as the default.  Otherwise, a new
     `Session` is instantiated using the provided arguments and set as the
-    default.
+    default. 
 
     Parameters
     ----------

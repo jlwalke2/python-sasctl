@@ -296,6 +296,9 @@ class Session(requests.Session):
         self._id = uuid4().hex
         self.message_log = logger.getChild("session.%s" % self._id)
 
+        if verify_ssl is None:
+            verify_ssl = True
+        
         # If certificate path has already been set for SWAT package, make
         # Requests module reuse it.
         for k in ["SSLCALISTLOC", "CAS_CLIENT_SSL_CA_LIST"]:

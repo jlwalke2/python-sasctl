@@ -298,7 +298,7 @@ class Session(requests.Session):
 
         if verify_ssl is None:
             verify_ssl = True
-        
+
         # If certificate path has already been set for SWAT package, make
         # Requests module reuse it.
         for k in ["SSLCALISTLOC", "CAS_CLIENT_SSL_CA_LIST"]:

@@ -10,7 +10,10 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
-      - run: |
+
+      - name: Installed conda-build and anaconda client
+        shell: bash -l {0}
+        run: |
           conda install conda-build anaconda-client
 
       - name: Checkout repository

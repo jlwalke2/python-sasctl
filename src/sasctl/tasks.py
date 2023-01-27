@@ -14,6 +14,12 @@ import os
 import re
 import sys
 import warnings
+import pandas as pd
+
+try:
+    import swat
+except ImportError:
+    swat = None
 
 from urllib.error import HTTPError
 
@@ -236,6 +242,9 @@ def register_model(
     .. versionchanged:: v1.4.5
         Added `record_packages` parameter.
 
+    .. versionchanged:: v1.7.4
+        Update ASTORE handling for ease of use and removal of SAS Viya 4 score code errors
+
     """
     # TODO: Create new version if model already exists
 
@@ -262,11 +271,9 @@ def register_model(
     except HTTPError as e:
         if e.code == 403:
             raise AuthorizationError(
-                "Unable to register model.  User account "
-                "does not have read permissions for the "
-                "/modelRepository/repositories/ URL. "
-                "Please contact your SAS Viya "
-                "administrator."
+                "Unable to register model.  User account does not have read permissions "
+                "for the /modelRepository/repositories/ URL. Please contact your SAS "
+                "Viya administrator."
             )
         raise e
 
@@ -277,46 +284,109 @@ def register_model(
     if repo_obj is None:
         raise ValueError("Unable to find repository '{}'".format(repository))
 
-    # If model is a CASTable then assume it holds an ASTORE model.
-    # Import these via a ZIP file.
+    # If model is a CASTable then assume it holds an ASTORE model.  Import these via a ZIP file.
     if "swat.cas.table.CASTable" in str(type(model)):
-        zipfile = utils.create_package(model, input=input)
+        if swat is None:
+            raise RuntimeError(
+                "The 'swat' package is required to work with SAS models."
+            )
+        if not isinstance(model, swat.CASTable):
+            raise ValueError(
+                "Parameter 'table' should be an instance of '%r' but "
+                "received '%r'." % (swat.CASTable, model)
+            )
 
-        if create_project:
-            outvar = []
-            invar = []
-            import zipfile as zp
-            import copy
+        if "DataStepSrc" in model.columns:
+            zip_file = utils.create_package_from_datastep(model, input=input)
+            if create_project:
+                out_var = []
+                in_var = []
+                import zipfile as zp
+                import copy
 
-            zipfilecopy = copy.deepcopy(zipfile)
-            tmpzip = zp.ZipFile(zipfilecopy)
-            if "outputVar.json" in tmpzip.namelist():
-                outvar = json.loads(
-                    tmpzip.read("outputVar.json").decode("utf=8")
-                )  # added decode for 3.5 and older
-                for tmp in outvar:
-                    tmp.update({"role": "output"})
-            if "inputVar.json" in tmpzip.namelist():
-                invar = json.loads(
-                    tmpzip.read("inputVar.json").decode("utf-8")
-                )  # added decode for 3.5 and older
-                for tmp in invar:
-                    if tmp["role"] != "input":
-                        tmp["role"] = "input"
+                zip_file_copy = copy.deepcopy(zip_file)
+                tmp_zip = zp.ZipFile(zip_file_copy)
+                if "outputVar.json" in tmp_zip.namelist():
+                    out_var = json.loads(
+                        tmp_zip.read("outputVar.json").decode("utf=8")
+                    )  # added decode for 3.5 and older
+                    for tmp in out_var:
+                        tmp.update({"role": "output"})
+                if "inputVar.json" in tmp_zip.namelist():
+                    in_var = json.loads(
+                        tmp_zip.read("inputVar.json").decode("utf-8")
+                    )  # added decode for 3.5 and older
+                    for tmp in in_var:
+                        if tmp["role"] != "input":
+                            tmp["role"] = "input"
 
-            if "ModelProperties.json" in tmpzip.namelist():
-                model_props = json.loads(
-                    tmpzip.read("ModelProperties.json").decode("utf-8")
+                if "ModelProperties.json" in tmp_zip.namelist():
+                    model_props = json.loads(
+                        tmp_zip.read("ModelProperties.json").decode("utf-8")
+                    )
+                else:
+                    model_props = {}
+                project = _create_project(
+                    project, model_props, repo_obj, in_var, out_var
+                )
+            model = mr.import_model_from_zip(name, project, zip_file, version=version)
+        # Assume ASTORE model if not a DataStep model
+        else:
+            cas = model.session.get_connection()
+            cas.loadactionset("astore")
+
+            if create_project:
+                result = cas.astore.describe(rstore=model, epcode=False)
+                model_props = utils.astore._get_model_properties(result)
+
+                # Format input & output variable info as lists of dicts
+                input_vars = [
+                    utils.astore.get_variable_properties(v)
+                    for v in result.InputVariables.itertuples()
+                ]
+                output_vars = [
+                    utils.astore.get_variable_properties(v)
+                    for v in result.OutputVariables.itertuples()
+                ]
+
+                # Set the variable 'role' if it wasn't included (not all astores specify)
+                for v in input_vars:
+                    v.setdefault("role", "INPUT")
+                for v in output_vars:
+                    v.setdefault("role", "OUTPUT")
+
+                # Some astores include the target variable in the 'InputVariable' data frame.  Exclude anything not
+                # marked as INPUT.
+                input_vars = [v for v in input_vars if v["role"] == "INPUT"]
+
+                project = _create_project(
+                    project, model_props, repo_obj, input_vars, output_vars
                 )
             else:
-                model_props = {}
+                project = mr.get_project(project)
 
-            project = _create_project(project, model_props, repo_obj, invar, outvar)
-
-        model = mr.import_model_from_zip(name, project, zipfile, version=version)
+            if current_session().version_info() < 4:
+                # Upload the model as a ZIP file if using Viya 3.
+                zipfile = utils.create_package(model, input=input)
+                model = mr.import_model_from_zip(
+                    name, project, zipfile, version=version
+                )
+            else:
+                # If using Viya 4, just upload the raw AStore and Model Manager will handle inspection.
+                astore = cas.astore.download(rstore=model)
+                params = {
+                    "name": name,
+                    "projectId": project.id,
+                    "type": "ASTORE",
+                }
+                model = mr.post(
+                    "/models",
+                    files={"files": (f"{model.params['name']}.sasast", astore["blob"])},
+                    data=params,
+                )
         return model
 
-    # If the model is an scikit-learn model, generate the model dictionary
+    # If the model is a scikit-learn model, generate the model dictionary
     # from it and pickle the model for storage
     if all(hasattr(model, attr) for attr in ["_estimator_type", "get_params"]):
         # Pickle the model so we can store it
@@ -434,7 +504,7 @@ def register_model(
 
 
 def publish_model(
-    model, destination, code=None, max_retries=60, replace=False, **kwargs
+    model, destination, code=None, name=None, max_retries=60, replace=False, **kwargs
 ):
     """Publish a model to a configured publishing destination.
 
@@ -445,6 +515,8 @@ def publish_model(
         the model.
     destination : str
     code : optional
+    name : str, optional
+        Name of custom publish name for publish calls that do not have code. Default is None.
     max_retries : int, optional
     replace : bool, optional
         Whether to overwrite the model if it already exists in
@@ -484,10 +556,16 @@ def publish_model(
 
             if dest_obj and dest_obj.destinationType == "cas":
                 publish_req = mm.publish_model(
-                    model, destination, force=replace, reload_model_table=True
+                    model,
+                    destination,
+                    force=replace,
+                    name=name,
+                    reload_model_table=True,
                 )
             else:
-                publish_req = mm.publish_model(model, destination, force=replace)
+                publish_req = mm.publish_model(
+                    model, destination, force=replace, name=name
+                )
         else:
             publish_req = mp.publish_model(model, destination, code=code, **kwargs)
 
@@ -747,3 +825,114 @@ def _parse_module_url(msg):
         module_url = match.group(1) if match else None
 
     return module_url
+
+
+def get_project_kpis(
+    project,
+    server="cas-shared-default",
+    caslib="ModelPerformanceData",
+    filterColumn=None,
+    filterValue=None,
+):
+    """Create a call to CAS to return the MM_STD_KPI table (Model Manager Standard KPI)
+    generated when custom KPIs are uploaded or when a performance definition is executed
+    on SAS Model Manager on SAS Viya 4.
+
+    Filtering options are available as additional arguments. The filtering is based on
+    column name and column value. Currently, only exact matches are available when filtering
+    by this method.
+
+    Parameters
+    ----------
+    project : str or dict
+        The name or id of the project, or a dictionary representation of
+        the project.
+    server : str, optional
+        SAS Viya 4 server where the MM_STD_KPI table exists,
+        by default "cas-shared-default"
+    caslib : str, optional
+        SAS Viya 4 caslib where the MM_STD_KPI table exists,
+        by default "ModelPerformanceData"
+    filterColumn : str, optional
+        Column name from the MM_STD_KPI table to be filtered, by default None
+    filterValue : str, optional
+        Column value to be filtered, by default None
+    Returns
+    -------
+    kpiTableDf : DataFrame
+        A pandas DataFrame representing the MM_STD_KPI table. Note that SAS
+        missing values are replaced with pandas valid missing values.
+    """
+    from .core import is_uuid
+    from distutils.version import StrictVersion
+
+    # Check the pandas version for where the json_normalize function exists
+    if pd.__version__ >= StrictVersion("1.0.3"):
+        from pandas import json_normalize
+    else:
+        from pandas.io.json import json_normalize
+
+    # Collect the current session for authentication of API calls
+    sess = current_session()
+
+    # Step through options to determine project UUID
+    if is_uuid(project):
+        projectId = project
+    elif isinstance(project, dict) and "id" in project:
+        projectId = project["id"]
+    else:
+        project = mr.get_project(project)
+        projectId = project["id"]
+
+    # TODO: include case for large MM_STD_KPI tables
+    # Call the casManagement service to collect the column names in the table
+    kpiTableColumns = sess.get(
+        "casManagement/servers/{}/".format(server)
+        + "caslibs/{}/tables/".format(caslib)
+        + "{}.MM_STD_KPI/columns?limit=10000".format(projectId)
+    )
+    if not kpiTableColumns:
+        project = mr.get_project(project)
+        raise SystemError(
+            "No KPI table exists for project {}.".format(project.name)
+            + " Please confirm that the performance definition completed"
+            + " or custom KPIs have been uploaded successfully."
+        )
+    # Parse through the json response to create a pandas DataFrame
+    cols = json_normalize(kpiTableColumns.json(), "items")
+    # Convert the columns to a readable list
+    colNames = cols["name"].to_list()
+
+    # Filter rows returned by column and value provided in arguments
+    whereStatement = ""
+    if filterColumn and filterValue:
+        whereStatement = "&where={}='{}'".format(filterColumn, filterValue)
+
+    # Call the casRowSets service to return row values; optional where statement is included
+    kpiTableRows = sess.get(
+        "casRowSets/servers/{}/".format(server)
+        + "caslibs/{}/tables/".format(caslib)
+        + "{}.MM_STD_KPI/rows?limit=10000".format(projectId)
+        + "{}".format(whereStatement)
+    )
+    # If no "cells" are found in the json response, return an error based on provided arguments
+    try:
+        kpiTableDf = pd.DataFrame(
+            json_normalize(kpiTableRows.json()["items"])["cells"].to_list(),
+            columns=colNames,
+        )
+    except KeyError:
+        if filterColumn and filterValue:
+            raise SystemError(
+                "No KPIs were found when filtering with {}='{}'.".format(
+                    filterColumn, filterValue
+                )
+            )
+        else:
+            projectName = mr.get_project(project)["name"]
+            raise SystemError("No KPIs were found for project {}.".format(projectName))
+
+    # Strip leading spaces from all cells of KPI table and convert missing values to None
+    kpiTableDf = kpiTableDf.apply(lambda x: x.str.strip()).replace([".", ""], None)
+
+    return kpiTableDf

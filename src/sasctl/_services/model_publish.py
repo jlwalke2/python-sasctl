@@ -129,7 +129,7 @@ class ModelPublish(Service):
             destinationName=destination,
         )
 
-        modelContents = {
+        model_contents = {
             "modelName": model.get("name"),
             "modelId": model.get("id"),
             "sourceUri": model_uri.get("href"),
@@ -139,7 +139,7 @@ class ModelPublish(Service):
             "code": code,
         }
 
-        request["modelContents"] = [modelContents]
+        request["model_contents"] = [model_contents]
         return cls.post(
             "/models",
             json=request,

@@ -6,6 +6,7 @@
 
 """The Model Repository service supports registering and managing models."""
 
+import datetime
 from warnings import warn
 
 from .service import Service
@@ -25,13 +26,6 @@ FUNCTIONS = {
 }
 
 
-def _get_filter(x):
-    # Model Repository filtering is done using the properties= query parameter
-    # instead of the default filter= parameter (as of Viya 3.4).
-    # Define a custom function for building out the filter
-    return dict(properties="(name, %s)" % x)
-
-
 class ModelRepository(Service):
     """Implements the Model Repository REST API.
 
@@ -48,20 +42,20 @@ class ModelRepository(Service):
     _SERVICE_ROOT = "/modelRepository"
 
     list_repositories, _, update_repository, delete_repository = Service._crud_funcs(
-        "/repositories", "repository", get_filter=_get_filter
+        "/repositories", "repository"
     )
 
     list_projects, get_project, update_project, delete_project = Service._crud_funcs(
-        "/projects", "project", get_filter=_get_filter
+        "/projects", "project"
     )
 
     list_models, get_model, update_model, delete_model = Service._crud_funcs(
-        "/models", "model", get_filter=_get_filter
+        "/models", "model"
     )
 
     @classmethod
     def get_astore(cls, model):
-        """Get the ASTORE for a model registered int he model repository.
+        """Get the ASTORE for a model registered in the model repository.
 
         Parameters
         ----------
@@ -299,14 +293,18 @@ class ModelRepository(Service):
             Indicates whether the model can be retrained or not.
         is_immutable : bool
             Indicates whether the model can be changed or not.
-        properties : array_like, optional (custom properties)
-            Custom model properties that can be set: name, value, type
+        properties : dict, optional
+            Custom model properties provided as name: value pairs.
+            Allowed types are int, float, string, datetime.date, and datetime.datetime
         input_variables : array_like, optional
             Model input variables. By default, these are the same as the model
             project.
         output_variables : array_like, optional
             Model output variables. By default, these are the same as the model
              project.
+        project_version : str
+            Name of project version to import model in to. Default
+            value is "latest".
 
         Returns
         -------
@@ -338,9 +336,27 @@ class ModelRepository(Service):
         elif is_challenger:
             model["role"] = "challenger"
 
-        model.setdefault(
-            "properties", [{"name": k, "value": v} for k, v in properties.items()]
-        )
+        model.setdefault("properties", [])
+        for k, v in properties.items():
+            if type(v) in (int, float):
+                t = "numeric"
+            elif type(v) is datetime.date:
+                # NOTE: do not use isinstance() to compare types as isinstance(v, datetime.date) evaluates to True
+                #       even for datetime.datetime instances.
+                # Convert to datetime to extract timestamp and then scale to milliseconds
+                v = datetime.datetime(v.year, v.month, v.day).timestamp()
+                v = int(v * 1000)
+                t = "date"
+            elif type(v) is datetime.datetime:
+                # Extract timestamp and scale to milliseconds
+                v = int(v.timestamp() * 1000)
+                t = "dateTime"
+            else:
+                t = "string"
+                v = str(v)
+
+            model["properties"].append({"name": k, "value": v, "type": t})
+
         model["scoreCodeType"] = score_code_type or model.get("scoreCodeType")
         model["trainTable"] = training_table or model.get("trainTable")
         model[
@@ -357,7 +373,7 @@ class ModelRepository(Service):
         model["immutable"] = is_immutable or model.get("immutable")
         model["inputVariables"] = input_variables or model.get("inputVariables", [])
         model["outputVariables"] = output_variables or model.get("outputVariables", [])
-        model["version"] = "2"
+        model["version"] = 2
 
         return cls.post(
             "/models",
@@ -366,7 +382,9 @@ class ModelRepository(Service):
         )
 
     @classmethod
-    def add_model_content(cls, model, file, name, role=None, content_type=None):
+    def add_model_content(
+        cls, model, file, name, role=None, content_type="multipart/form-data"
+    ):
         """Add additional files to the model.
 
         Parameters
@@ -374,14 +392,14 @@ class ModelRepository(Service):
         model : str or dict
             The name or id of the model, or a dictionary representation of
             the model.
-        file : str or bytes
+        file : str, dict, or bytes
             A file related to the model, such as the model code.
         name : str
             Name of the file related to the model.
         role : str
-            Role of the model file, such as 'Python pickle'.
+            Role of the model file, such as 'Python pickle'. Default value is None.
         content_type : str
-            an HTTP Content-Type value
+            An HTTP Content-Type value. Default value is multipart/form-data.
 
         Returns
         -------
@@ -397,34 +415,42 @@ class ModelRepository(Service):
             model = cls.get_model(model)
             id_ = model["id"]
 
-        if content_type is None and isinstance(file, bytes):
+        if content_type == "multipart/form-data" and isinstance(file, bytes):
             content_type = "application/octet-stream"
+        elif isinstance(file, dict):
+            import json
 
-        if content_type is not None:
-            files = {name: (name, file, content_type)}
+            file = json.dumps(file)
+
+        files = {"files": (name, file, content_type)}
+
+        if role is None:
+            params = {}
         else:
-            files = {name: file}
+            params = {"role": role}
+        params = "&".join("{}={}".format(k, v) for k, v in params.items())
 
-        metadata = {"role": role, "name": name}
-
-        # return cls.post('/models/{}/contents'.format(id_), files=files, data=metadata)
-
-        # if the file already exists, a 409 error will be returned
+        # If the file already exists, a 409 error will be returned
         try:
             return cls.post(
-                "/models/{}/contents".format(id_), files=files, data=metadata
+                "/models/{}/contents".format(id_), files=files, params=params
             )
-        # delete the older duplicate model and rerun the API call
+        # Deletes the duplicate content and reruns the API call
         except HTTPError as e:
             if e.code == 409:
                 model_contents = cls.get_model_contents(id_)
                 for item in model_contents:
                     if item.name == name:
                         cls.delete("/models/{}/contents/{}".format(id_, item.id))
+
+                        # Return json stream to beginning of file content
+                        if hasattr(files["files"][1], "seek"):
+                            files["files"][1].seek(0)
+
                         return cls.post(
                             "/models/{}/contents".format(id_),
                             files=files,
-                            data=metadata,
+                            params=params,
                         )
             else:
                 raise e
@@ -503,6 +529,8 @@ class ModelRepository(Service):
             The ZIP file containing the model and contents.
         description : str
             The description of the model.
+        version : str, optional
+            Name of the project version. Default value is "latest".
 
         Returns
         -------
@@ -769,3 +797,56 @@ class ModelRepository(Service):
             id_ = model["id"]
 
         return cls.get("/models/%s" % id_)
+
+    @classmethod
+    def list_project_versions(cls, project):
+        """Get a list of all versions of a project.
+
+        Parameters
+        ----------
+        project : str or dict
+            The name or id of the model project, or a dictionary representation
+            of the model project.
+
+        Returns
+        -------
+        list of dicts
+            List of dicts representing different project versions. Dict key/value
+            pairs are as follows.
+                name : str
+                id : str
+                number : str
+                modified : datetime
+
+        """
+        project_info = cls.get_project(project)
+
+        if project_info is None:
+            raise ValueError("Project `%s` could not be found." % str(project))
+
+        projectVersions = cls.get(
+            "/projects/{}/projectVersions".format(project_info.id)
+        )
+        versionList = []
+        try:
+            for version in projectVersions:
+                versionDict = {
+                    "name": version.name,
+                    "id": version.id,
+                    "number": version.versionNumber,
+                    "modified": datetime.datetime.strptime(
+                        version.modifiedTimeStamp, "%Y-%m-%dT%H:%M:%S.%fZ"
+                    ),
+                }
+                versionList.append(versionDict)
+        except AttributeError:
+            versionDict = {
+                "name": projectVersions.name,
+                "id": projectVersions.id,
+                "number": projectVersions.versionNumber,
+                "modified": datetime.datetime.strptime(
+                    projectVersions.modifiedTimeStamp, "%Y-%m-%dT%H:%M:%S.%fZ"
+                ),
+            }
+            versionList.append(versionDict)
+        return versionList

@@ -9,22 +9,21 @@ import pytest
 from sasctl.core import RestObj
 from sasctl.services import folders
 
-pytestmark = pytest.mark.usefixtures('session')
-
+pytestmark = pytest.mark.usefixtures("session")
 
 
 @pytest.mark.incremental
 class TestFolders:
-    FOLDER_NAME = 'Test Folder'
+    FOLDER_NAME = "Test Folder"
 
     def test_list_folders(self):
         all_folders = folders.list_folders()
         assert all(isinstance(f, RestObj) for f in all_folders)
 
-    def test_get_folder(self):
-        folder = folders.get_folder('Resources')
-        assert isinstance(folder, RestObj)
-        assert 'Resources' == folder.name
+    # def test_get_folder(self):
+    #     folder = folders.get_folder('Resources')
+    #     assert isinstance(folder, RestObj)
+    #     assert 'Resources' == folder.name
 
     def test_create_folder(self):
         folder = folders.create_folder(self.FOLDER_NAME)

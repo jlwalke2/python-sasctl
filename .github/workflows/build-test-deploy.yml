@@ -7,33 +7,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Lint
-        uses: ricardochaves/python-lint@v1.4.0
-        continue-on-error: true
+      - name: Black
+        uses: psf/black@stable
         with:
-          python-root-list: "src"
-
-  lint:
-    name: "Lint"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: psf/black@stable
-        with:
-          options: "--verbose"
-          src: "./src"
-      - name: Commit changes
-        run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -a -m "reformatted with Black"
-      - name: Push changes to repo
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          force: true        
+          src: "./src ./tests"
 
   test:
     name: "Test"
@@ -42,35 +21,69 @@ jobs:
       LANG: en_US.UTF-8
     strategy:
       matrix:
-        python-version: [3.5, 3.6, 3.7, 3.8, 3.9, '3.10']
-        os-version: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.6', '3.7', '3.8', '3.9', '3.10']
+        os-version: ['ubuntu-20.04', 'windows-latest', 'macos-latest']
+# Pinned Ubuntu version to 20.04 since no Python 3.6 builds available on ubuntu-latest (22.04) as of 2022-12-7.
+#        os-version: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies (Ubuntu)
-        if: matrix.os-version == 'ubuntu-latest'
+        if: startsWith(matrix.os-version, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install build-essential libkrb5-dev
 
       - name: Install dependencies (Common)
         run: |
-          # Setup tox
+          # Setup tox & code coverage
           pip install --upgrade pip
-          pip install tox tox-gh-actions codecov
+          pip install tox tox-gh-actions pytest pytest-cov scikit-learn
 
       - name: Run Tests
         run: |
           tox
-          codecov
 
+      # Separate upload task for unit test coverage allows for flagged analysis of test coverage
+      - name: Upload Unit Test Coverage
+        if: startsWith(matrix.os-version, 'ubuntu')
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./.reports/
+          fail_ci_if_error: false
+          file: unit.xml
+          flags: unit
+          verbose: true
+
+      # Separate upload task for integration test coverage allows for flagged analysis of test coverage
+      - name: Upload Integration Test Coverage
+        if: startsWith(matrix.os-version, 'ubuntu')
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./.reports/
+          fail_ci_if_error: false
+          file: integration.xml
+          flags: integration
+          verbose: true
+
+# Uncomment when scenario test cases are working again
+#      Separate upload task for scenario test coverage allows for flagged analysis of test coverage
+#      - name: Upload Scenario Test Coverage
+#        if: matrix.os-version == 'ubuntu-latest'
+#        uses: codecov/codecov-action@v3
+#        with:
+#          directory: ./.reports/
+#          fail_ci_if_error: true
+#          file: scenarios.xml
+#          flags: scenarios
+#          verbose: true
 
   gh-pages:
     name: "Build Documentation"
@@ -80,18 +93,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.6
+          python-version: 3.9
 
       - name: Setup environment
         run: |
           mv doc docs
           sudo apt-get install build-essential
-          pip install sphinx six pyyaml
+          pip install sphinx six pyyaml pandas
 
       - name: Check documentation
         uses: ammaraskar/sphinx-problem-matcher@master
@@ -113,7 +126,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Setup Python
         uses: actions/setup-python@v2

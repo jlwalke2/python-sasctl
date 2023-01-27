@@ -1,6 +1,89 @@
 Unreleased
 ----------
- -
+**Improvements**
+ - `folders.get_folder()` can now handle folder paths and delegates (e.g. @public).
+
+**Bugfixes**
+ - Fixed an issue with `model_management.execute_model_workflow_definition()` where input values for
+   workflow prompts were not correctly submitted.  Note that the `input=` parameter was renamed to
+   `prompts=` to avoid conflicting with the built-in `input()`.
+
+v1.8.1 (2023-01-19)
+----------
+**Changes**
+ - Adjusted workflow for code coverage reporting. Prepped to add components in next release.
+ - Added `generate_requirements_json.ipynb` example.
+
+**Bugfixes**
+ - Fixed improper math.fabs use in `sasctl.pzmm.writeJSONFiles.calculateFitStat()`.
+ - Fixed incorrect ast node walk for module collection in `sasctl.pzmm.writeJSONFiles.create_requirements_json()`.
+ 
+v1.8.0 (2022-12-19)
+-------------------
+**Improvements**
+ - Added `Session.version_info()` to check which version of Viya the session is connected to.
+ - Updated the `properties=` parameter of `model_repository.create_model()` to accept a dictionary containing
+   custom property names and values, and to correctly indicate their type (numeric, string, date, datetime) when
+   passing the values to Viya.
+ - Added `services.saslogon` for creating and removing OAuth clients.
+ - Added `pzmm.JSONFiles.create_requirements_json()` to create the requirements.json file for model deployment
+   to containers based on the user's model assets and Python environment.
+
+**Changes**
+ - Deprecated `core.platform_version()` in favor of `Session.version_info()`.
+ - A `RuntimeError` is now raised if an obsolete service is called on a Viya 4 session (sentiment_analysis, 
+   text_categorization, and text_parsing)
+ - Replaced the JSON cassettes used for testing with compressed binary cassettes to save space.
+ - Updated the testing framework to allow regression testing of multiple Viya versions.
+ - Refactored the authentication functionality in `Session` to be more clear and less error prone.  Relevant
+   functions were also made private to reduce clutter in the class's public interface.
+ - Began refactor for `sasctl.pzmm` to adhere to PEP8 guidelines and have better code coverage.
+
+**Bugfixes**
+ - Fixed an issue with `register_model()` that caused invalid SAS score code to be generated when registering an
+   ASTORE model in Viya 3.5.
+ - Fixed a bug where calling a "get_item()" function and passing `None` would throw an error on most services instead
+   of returning `None`. 
+ - Fixed a bug that caused the authentication flow to be interrupted if Kerberos was missing.
+ 
+v1.7.3 (2022-09-20)
+-------------------
+**Improvements**
+ - Refactor astore model upload to fix 422 response from SAS Viya 4 
+ - ASTORE model import now uses SAS Viya to generate ASTORE model assets
+ - Expanded usage for cas_management service (credit to @SilvestriStefano)
+
+**Bugfixes**
+ - ASTORE model import no longer returns a 422 error
+ - Fix improper filter usage for model_repository service
+ - Fix error with loss of stream in add_model_content call for duplicate content
+ - Update integration test cassettes for SAS Viya 4
+
+v1.7.2 (2022-06-16)
+-------------------
+**Improvements**
+ - Added a new example notebook for git integration
+ - Added a model migration tool for migrating Python models from Viya 3.5 to Viya 4
+ - Improved handling of CAS authentication with tokens
+
+**Bugfixes**
+ - Fixed git integration failure caused by detached head
+ - Fixed minor bugs in score code generation feature
+ - Fixed 500 error when importing models to Viya 4 with prewritten score code
+ - Fixed incorrect handling of optional packages in pzmm
+
+v1.7.1 (2022-04-19)
+-------------------
+**Bugfixes**
+ - Removed linux breaking import from new git integration feature
+ - Various minor bug fixes in the git integration feature
+
+v1.7.0 (2022-04-07)
+-------------------
+**Improvements**
+ - Added Git integration for better tracking of model history and versioning. 
+ - Added MLFlow integration for simple models, allowing users to import simple MLFlow models, such as sci-kit 
+   learn, to SAS Model Manager
 
 v1.6.4 (2022-04-07)
 -------------------

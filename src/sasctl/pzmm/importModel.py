@@ -5,10 +5,10 @@ from pathlib import Path
 from uuid import UUID
 from warnings import warn
 
-from ..core import platform_version
+from ..core import current_session
 from .._services.model_repository import ModelRepository as mr
 from .writeScoreCode import ScoreCode as sc
-from .zipModel import ZipModel as zm
+from .zip_model import ZipModel as zm
 
 
 def project_exists(response, project):
@@ -49,27 +49,51 @@ def project_exists(response, project):
         return response
 
 
-def model_exists(project, name, force):
-    """Checks if model already exists and either raises an error or deletes the redundant model.
+def model_exists(project, name, force, versionName="latest"):
+    """
+    Checks if model already exists in the same project and either raises an error or
+    deletes the redundant model. If no project version is provided, the version is
+    assumed to be "latest".
 
     Parameters
     ----------
-    project : string or dict
+    project : str or dict
         The name or id of the model project, or a dictionary representation of the project.
     name : str or dict
         The name of the model.
     force : bool, optional
         Sets whether to overwrite models with the same name upon upload.
+    versionName : str, optional
+        Name of project version to check if a model of the same name already exists.
+        Default value is "latest".
 
     Raises
     ------
     ValueError
-        Model repository API cannot overwrite an already existing model with the upload model call.
-        Alerts user of the force argument to allow multi-call API overwriting.
+        Model repository API cannot overwrite an already existing model with the upload
+        model call. Alerts user of the force argument to allow multi-call API
+        overwriting.
     """
     project = mr.get_project(project)
     projectId = project["id"]
-    projectModels = mr.get("/projects/{}/models".format(projectId))
+    projectVersions = mr.list_project_versions(project)
+    if versionName == "latest":
+        modTime = [item["modified"] for item in projectVersions]
+        latestVersion = modTime.index(max(modTime))
+        versionId = projectVersions[latestVersion]["id"]
+    else:
+        for version in projectVersions:
+            if versionName == version["name"]:
+                versionId = version["id"]
+                break
+    try:
+        projectModels = mr.get(
+            "/projects/{}/projectVersions/{}/models".format(projectId, versionId)
+        )
+    except UnboundLocalError:
+        raise ValueError(
+            f"The project version {versionName} was not found in project {project}."
+        )
 
     for model in projectModels:
         # Throws a TypeError if only one model is in the project
@@ -79,9 +103,9 @@ def model_exists(project, name, force):
                     mr.delete_model(model.id)
                 else:
                     raise ValueError(
-                        "A model with the same model name exists in project {}. Include the force=True argument to overwrite models with the same name.".format(
-                            project.name
-                        )
+                        "A model with the same model name exists in project {}. "
+                        "Include the force=True argument to overwrite models with the "
+                        "same name.".format(project.name)
                     )
         except TypeError:
             if projectModels["name"] == name:
@@ -89,9 +113,9 @@ def model_exists(project, name, force):
                     mr.delete_model(projectModels.id)
                 else:
                     raise ValueError(
-                        "A model with the same model name exists in project {}. Include the force=True argument to overwrite models with the same name.".format(
-                            project.name
-                        )
+                        "A model with the same model name exists in project {}. "
+                        "Include the force=True argument to overwrite models with the "
+                        "same name.".format(project.name)
                     )
 
 
@@ -105,7 +129,8 @@ class ImportModel:
         inputDF,
         targetDF,
         predictmethod,
-        metrics=["EM_EVENTPROBABILITY", "EM_CLASSIFICATION"],
+        metrics=None,
+        projectVersion="latest",
         modelFileName=None,
         pyPath=None,
         threshPrediction=None,
@@ -114,6 +139,7 @@ class ImportModel:
         force=False,
         binaryString=None,
         missingValues=False,
+        mlFlowDetails=None,
     ):
         """Import model to SAS Model Manager using pzmm submodule.
 
@@ -153,8 +179,11 @@ class ImportModel:
             the format() command.
             For example: '{}.predict_proba({})'.
         metrics : string list, optional
-            The scoring metrics for the model. The default is a set of two
+            The scoring metrics for the model. The default is a list of two
             metrics: EM_EVENTPROBABILITY and EM_CLASSIFICATION.
+        projectVersion : string, optional
+            The project version to import the model in to on SAS Model Manager. The default value
+            is latest.
         modelFileName : string, optional
             Name of the model file that contains the model. By default None and assigned as
             modelPrefix + '.pickle'.
@@ -176,10 +205,20 @@ class ImportModel:
         missingValues : boolean, optional
             Sets whether data used for scoring needs to go through imputation for
             missing values before passed to the model. By default False.
+        mlFlowDetails : dict, optional
+            Model details from an MLFlow model. This dictionary is created by the readMLModelFile function.
+            By default None.
         """
+        # Set metrics internal to function call if no value is given
+        if metrics is None:
+            metrics = ["EM_EVENTPROBABILITY", "EM_CLASSIFICATION"]
+
         # Initialize no score code or binary H2O model flags
         noScoreCode = False
         binaryModel = False
+
+        if mlFlowDetails is None:
+            mlFlowDetails = {"serialization_format": "pickle"}
 
         if pyPath is None:
             pyPath = Path(zPath)
@@ -221,7 +260,8 @@ class ImportModel:
                 modelFileName = modelPrefix + ".pickle"
 
         # Check the SAS Viya version number being used
-        isViya35 = platform_version() == "3.5"
+
+        isViya35 = current_session().version_info() == 3.5
         # For SAS Viya 4, the score code can be written beforehand and imported with all of the model files
         if not isViya35:
             if noScoreCode:
@@ -241,13 +281,14 @@ class ImportModel:
                     isBinaryModel=binaryModel,
                     binaryString=binaryString,
                     missingValues=missingValues,
+                    pickleType=mlFlowDetails["serialization_format"],
                 )
                 print(
                     "Model score code was written successfully to {}.".format(
                         Path(pyPath) / (modelPrefix + "Score.py")
                     )
                 )
-            zipIOFile = zm.zipFiles(Path(zPath), modelPrefix)
+            zipIOFile = zm.zip_files(Path(zPath), modelPrefix, is_viya4=True)
             print("All model files were zipped to {}.".format(Path(zPath)))
 
             # Check if project name provided exists and raise an error or create a new project
@@ -255,9 +296,11 @@ class ImportModel:
             project = project_exists(projectResponse, project)
 
             # Check if model with same name already exists in project.
-            model_exists(project, modelPrefix, force)
+            model_exists(project, modelPrefix, force, versionName=projectVersion)
 
-            response = mr.import_model_from_zip(modelPrefix, project, zipIOFile)
+            response = mr.import_model_from_zip(
+                modelPrefix, project, zipIOFile, version=projectVersion
+            )
             try:
                 print(
                     "Model was successfully imported into SAS Model Manager as {} with UUID: {}.".format(
@@ -268,7 +311,7 @@ class ImportModel:
                 print("Model failed to import to SAS Model Manager.")
         # For SAS Viya 3.5, the score code is written after upload in order to know the model UUID
         else:
-            zipIOFile = zm.zipFiles(Path(zPath), modelPrefix)
+            zipIOFile = zm.zip_files(Path(zPath), modelPrefix, is_viya4=False)
             print("All model files were zipped to {}.".format(Path(zPath)))
 
             # Check if project name provided exists and raise an error or create a new project
@@ -276,9 +319,11 @@ class ImportModel:
             project = project_exists(projectResponse, project)
 
             # Check if model with same name already exists in project.
-            model_exists(project, modelPrefix, force)
+            model_exists(project, modelPrefix, force, versionName=projectVersion)
 
-            response = mr.import_model_from_zip(modelPrefix, project, zipIOFile, force)
+            response = mr.import_model_from_zip(
+                modelPrefix, project, zipIOFile, force, projectVersion=projectVersion
+            )
             try:
                 print(
                     "Model was successfully imported into SAS Model Manager as {} with UUID: {}.".format(
@@ -305,6 +350,7 @@ class ImportModel:
                     isBinaryModel=binaryModel,
                     binaryString=binaryString,
                     missingValues=missingValues,
+                    pickleType=mlFlowDetails["serialization_format"],
                 )
                 print(
                     "Model score code was written successfully to {} and uploaded to SAS Model Manager".format(

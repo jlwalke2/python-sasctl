@@ -2,39 +2,9 @@ name: "Publish"
 on: [push, workflow_dispatch]
 jobs:
 
-  build_pypi:
-    name: "Build PyPI Package"
-    runs-on: ubuntu-latest
-#    needs: test
-#    if: startsWith(github.ref, 'refs/tags/') # run only on tagged commits
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v2
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install setuptools wheel twine
-
-      - name: Build Package
-        run: |
-          python setup.py sdist bdist_wheel
-
-      - name: Archive distribution artifacts
-        # Archive distribution files for use by auto (or manual) PyPI upload
-        uses: actions/upload-artifact@v2
-        with:
-          name: pypi-dist
-          path: ./dist
-
   build_conda:
     name: "Build Conda Package"
     runs-on: ubuntu-latest
-    needs: [build_pypi]
 
     steps:
       # Setup Miniconda
@@ -50,26 +20,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Download release
-        uses: actions/download-artifact@v2
-        with:
-          name: pypi-dist
-          path: ./dist
-
-      - name: Build package
-        shell: bash -l {0}
-        run: |
-          pwd
-          ls -R .
-
       # Build and upload
       - name: Build package
         shell: bash -l {0}
         run: |
-          pwd
-          ls -R .
           conda build --output-folder .build .conda
-          ls -R .build
           anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload -u jlwalke2 .build/noarch/sasctl-*.tar.bz2
 
 

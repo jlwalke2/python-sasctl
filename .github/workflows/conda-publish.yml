@@ -56,6 +56,12 @@ jobs:
           name: pypi-dist
           path: ./dist
 
+      - name: Build package
+        shell: bash -l {0}
+        run: |
+          pwd
+          ls -R .
+
       # Build and upload
       - name: Build package
         shell: bash -l {0}

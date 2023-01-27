@@ -21,11 +21,10 @@ jobs:
 
       # Build and upload
       - name: Build package
-        shell: bash -l {0}
         run: |
           conda build --output-folder .build .conda
           ls -R .build
-          anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload -u ${{ env.ANACONDA_USER }} --all .build/noarch/sasctl-*.tar.bz2
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload -u jlwalke2 --all .build/noarch/sasctl-*.tar.bz2
 
 
 

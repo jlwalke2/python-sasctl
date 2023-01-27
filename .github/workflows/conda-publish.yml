@@ -10,7 +10,7 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
-        run: |
+      - run: |
           conda install conda-build
 
       - name: Checkout repository

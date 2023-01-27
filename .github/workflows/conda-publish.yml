@@ -10,10 +10,9 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
-          python-version: ${{ matrix.python-version }}
+          conda-build-version: 3.23.3
 
       - name: Install conda-build
-        shell: sh -l {0}
         run: |
           conda install conda-build
 

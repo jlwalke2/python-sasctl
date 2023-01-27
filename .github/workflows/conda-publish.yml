@@ -10,11 +10,12 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
+          conda-build-version: 3.23.3
 
-      - name: Installed conda-build and anaconda client
-        shell: bash -l {0}
-        run: |
-          conda install conda-build anaconda-client
+#      - name: Installed conda-build and anaconda client
+#        shell: bash -l {0}
+#        run: |
+#          conda install conda-build anaconda-client
 
       - name: Checkout repository
         uses: actions/checkout@v3

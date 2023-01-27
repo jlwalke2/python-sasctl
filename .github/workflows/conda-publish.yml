@@ -12,6 +12,11 @@ jobs:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
 
+      - name: Install conda-build
+        shell: sh -l {0}
+        run: |
+          conda install conda-build
+
       - name: Checkout repository
         uses: actions/checkout@v3
 

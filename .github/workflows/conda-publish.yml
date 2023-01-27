@@ -10,25 +10,18 @@ jobs:
       - uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
-          conda-build-version: 3.23.3
-
-      - name: Install conda-build
         run: |
           conda install conda-build
 
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Build and upload
       - name: Build package
         run: |
-          conda build .conda
+          conda build --output-folder .build .conda
+          ls -R .build
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} -u ${{ ANACONDA_USER }} --all .build/noarch/sasctl-*.tar.bz2
 
-      - name: Publish to Conda
-        uses: MichaelsJP/conda-package-publish-action@v1.0.0
-        with:
-          subDir: '.conda'
-          AnacondaToken: ${{ secrets.ANACONDA_TOKEN }}
-          override: true
-          dry_run: true
 
 

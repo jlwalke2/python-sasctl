@@ -11,7 +11,7 @@ jobs:
         with:
           auto-update-conda: true
       - run: |
-          conda install conda-build
+          conda install conda-build anaconda-client
 
       - name: Checkout repository
         uses: actions/checkout@v3

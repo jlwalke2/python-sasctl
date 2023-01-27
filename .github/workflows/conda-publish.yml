@@ -11,7 +11,7 @@ jobs:
         with:
           auto-update-conda: true
       - run: |
-          conda install conda-build anaconda-client
+          conda install conda-build
 
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -21,7 +21,7 @@ jobs:
         run: |
           conda build --output-folder .build .conda
           ls -R .build
-          anaconda -t ${{ secrets.ANACONDA_TOKEN }} -u ${{ env.ANACONDA_USER }} --all .build/noarch/sasctl-*.tar.bz2
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload -u ${{ env.ANACONDA_USER }} --all .build/noarch/sasctl-*.tar.bz2
 
 
 

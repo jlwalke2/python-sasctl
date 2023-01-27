@@ -24,8 +24,11 @@ jobs:
           conda build .conda
 
       - name: Publish to Conda
-        uses: fcakyon/conda-publish-action@v1.3
+        uses: MichaelsJP/conda-package-publish-action@v1.0.0
         with:
-          subdir: '.conda'
-          anacondatoken: ${{ secrets.ANACONDA_TOKEN }}
+          subDir: '.conda'
+          AnacondaToken: ${{ secrets.ANACONDA_TOKEN }}
+          override: true
+          dry_run: true
+
 

@@ -66,6 +66,8 @@ jobs:
       - name: Build package
         shell: bash -l {0}
         run: |
+          pwd
+          ls -R .
           conda build --output-folder .build .conda
           ls -R .build
           anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload -u jlwalke2 .build/noarch/sasctl-*.tar.bz2

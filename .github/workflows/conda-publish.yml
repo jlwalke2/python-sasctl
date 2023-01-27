@@ -21,7 +21,7 @@ jobs:
         run: |
           conda build --output-folder .build .conda
           ls -R .build
-          anaconda -t ${{ secrets.ANACONDA_TOKEN }} -u ${{ ANACONDA_USER }} --all .build/noarch/sasctl-*.tar.bz2
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} -u ${{ env.ANACONDA_USER }} --all .build/noarch/sasctl-*.tar.bz2
 
 
 

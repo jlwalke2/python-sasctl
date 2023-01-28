@@ -12,10 +12,10 @@ jobs:
         with:
           auto-update-conda: true
 
-      - name: Installed conda-build and anaconda client
+      - name: Install conda-build
         shell: bash -l {0}
         run: |
-          conda install conda-build anaconda-client
+          conda install conda-build
 
       - name: Checkout repository
         uses: actions/checkout@v3

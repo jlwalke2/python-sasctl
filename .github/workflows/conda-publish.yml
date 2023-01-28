@@ -25,7 +25,40 @@ jobs:
         shell: bash -l {0}
         run: |
           conda build --output-folder .build .conda
-          anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload -u jlwalke2 .build/noarch/sasctl-*.tar.bz2
+
+      - name: Archive distribution artifacts
+        # Archive distribution files for use by auto (or manual) PyPI upload
+        uses: actions/upload-artifact@v2
+        with:
+          name: conda-dist
+          path: .build
 
 
+  upload_conda:
+    name: "Upload Conda Package"
+    runs-on: ubuntu-latest
 
+    steps:
+      # Setup Miniconda
+      - uses: conda-incubator/setup-miniconda@v2
+        with:
+          auto-update-conda: true
+
+      # Setup Anaconda client (required for upload)
+      - name: Install anaconda client
+        shell: bash -l {0}
+        run: |
+          conda install anaconda-client
+
+      # Download release files
+      - name: Download release
+        uses: actions/download-artifact@v2
+        with:
+          name: conda-dist
+          path: ./dist
+
+      # Upload release to Anaconda.org
+      - name: Upload release
+        shell: bash -l {0}
+        run: |
+          anaconda -t ${{ secrets.ANACONDA_TOKEN }} upload -u jlwalke2 ./dist/noarch/sasctl-*.tar.bz2
